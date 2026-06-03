@@ -16,7 +16,7 @@ creation, generated-file hygiene, and obvious secret-shaped strings.
 Install or update from GitHub:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CodePager/toolburn/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/CodePager/ToolBurn/main/install.sh | sh
 ```
 
 Install from a checkout:

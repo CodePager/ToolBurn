@@ -17,7 +17,7 @@ anything. Phase 1 is an offline CLI for answering a very practical question:
 Install or update the command:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CodePager/toolburn/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/CodePager/ToolBurn/main/install.sh | sh
 toolburn --help
 ```
 
