@@ -1,4 +1,4 @@
-"""Offline parsers for local Codex/OpenClaw JSONL evidence."""
+"""Offline parsers for local agent JSONL evidence."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from toolburn.schema import connect
 
 TOKEN_EVENT_TYPE = "token_count"
 ROLLOUT_GLOB = "rollout-*.jsonl"
+COPILOT_EVENTS_GLOB = "events.jsonl"
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,7 @@ def scan_sources(db_path: Path, sources: Iterable[SourceSpec]) -> dict[str, int]
     with connect(db_path) as conn:
         counts = {"files": 0, "sessions": 0, "token_events": 0, "invocations": 0}
         for source in sources:
-            for path in iter_jsonl_paths(source.path):
+            for path in iter_jsonl_paths(source.path, source.label):
                 parsed = parse_session_file(path, source.label)
                 if parsed is None:
                     continue
@@ -53,17 +54,23 @@ def scan_sources(db_path: Path, sources: Iterable[SourceSpec]) -> dict[str, int]
     return counts
 
 
-def iter_jsonl_paths(path: Path) -> Iterable[Path]:
+def iter_jsonl_paths(path: Path, source_label: str = "") -> Iterable[Path]:
     if path.is_file():
         if path.suffix == ".jsonl":
             yield path
         return
     if not path.exists():
         return
+    if is_copilot_source(source_label, path):
+        yield from sorted(path.rglob(COPILOT_EVENTS_GLOB))
+        return
     yield from sorted(path.rglob(ROLLOUT_GLOB))
 
 
 def parse_session_file(path: Path, source_label: str) -> ParsedSession | None:
+    if is_copilot_source(source_label, path):
+        return parse_copilot_session_file(path, source_label)
+
     meta: dict[str, Any] = {}
     token_rows: list[dict[str, Any]] = []
     invocations: list[dict[str, Any]] = []
@@ -154,6 +161,108 @@ def parse_session_file(path: Path, source_label: str) -> ParsedSession | None:
     return parsed if token_rows or invocations or meta else None
 
 
+def parse_copilot_session_file(path: Path, source_label: str) -> ParsedSession | None:
+    meta: dict[str, Any] = {}
+    token_rows: list[dict[str, Any]] = []
+    invocations: list[dict[str, Any]] = []
+    model = ""
+    started_at = ""
+    ended_at = ""
+
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+
+    for line_no, line in enumerate(lines, start=1):
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        row_type = row.get("type")
+        data = row.get("data") or {}
+        ts = str(row.get("timestamp") or data.get("startTime") or "")
+        if ts:
+            if not started_at:
+                started_at = ts
+            ended_at = ts
+
+        if row_type == "session.start":
+            if isinstance(data, dict):
+                meta.update(data)
+            continue
+
+        if row_type == "session.model_change" and isinstance(data, dict):
+            model = str(data.get("newModel") or model)
+            continue
+
+        if row_type == "assistant.usage" and isinstance(data, dict):
+            token_rows.append(
+                {
+                    "line_no": line_no,
+                    "ts": ts,
+                    "model": str(data.get("model") or model),
+                    "usage": usage_from_copilot_data(data),
+                }
+            )
+            continue
+
+        if row_type == "session.shutdown" and isinstance(data, dict):
+            for shutdown_model, metrics in (data.get("modelMetrics") or {}).items():
+                if not isinstance(metrics, dict):
+                    continue
+                usage = metrics.get("usage") or {}
+                if not isinstance(usage, dict):
+                    continue
+                token_rows.append(
+                    {
+                        "line_no": line_no,
+                        "ts": ts,
+                        "model": str(shutdown_model),
+                        "usage": usage_from_copilot_data(usage),
+                    }
+                )
+            continue
+
+        if row_type == "tool.execution_complete" and isinstance(data, dict):
+            command = copilot_command_from_tool_complete(data)
+            if command:
+                invocations.append(
+                    {
+                        "call_id": data.get("toolCallId") or stable_id(path, "tool", line_no),
+                        "command": command,
+                        "started_at": "",
+                        "ended_at": ts,
+                        "line_no": line_no,
+                        "cwd": copilot_workspace(meta),
+                        "output_bytes": len(str(data.get("result") or "").encode("utf-8")),
+                        "output_fingerprint": sha256_text(str(data.get("result") or "")),
+                        "output_shape": output_shape(str(data.get("result") or "")),
+                    }
+                )
+
+    session_id = str(meta.get("sessionId") or path.parent.name or stable_id(path, "session"))
+    workspace = copilot_workspace(meta)
+    parsed = ParsedSession(
+        session_id=session_id,
+        actor_id=infer_copilot_actor_id(session_id, workspace),
+        actor_type="unknown",
+        source=source_label,
+        path=path,
+        workspace=workspace,
+        started_at=started_at,
+        ended_at=ended_at or started_at,
+        label_confidence=0.55,
+        metadata={
+            "session_meta": scrub_copilot_meta(meta),
+            "token_rows": token_rows,
+            "invocations": invocations,
+        },
+    )
+    return parsed if token_rows or invocations or meta else None
+
+
 def upsert_session(conn, parsed: ParsedSession) -> None:
     conn.execute(
         """
@@ -209,10 +318,17 @@ def insert_token_events(conn, parsed: ParsedSession) -> int:
         for invocation in parsed.metadata["invocations"]
     }
     for item in parsed.metadata["token_rows"]:
-        row = item["row"]
-        payload = row.get("payload") or {}
-        info = payload.get("info") or {}
-        usage = info.get("last_token_usage") or {}
+        if "row" in item:
+            row = item["row"]
+            payload = row.get("payload") or {}
+            info = payload.get("info") or {}
+            usage = info.get("last_token_usage") or {}
+            ts = row.get("timestamp") or ""
+            model = ""
+        else:
+            usage = item.get("usage") or {}
+            ts = item.get("ts") or ""
+            model = item.get("model") or ""
         event_id = stable_id(parsed.path, "token", str(item["line_no"]))
         invocation_id = nearest_invocation_id(invocation_by_line, int(item["line_no"]))
         conn.execute(
@@ -228,8 +344,8 @@ def insert_token_events(conn, parsed: ParsedSession) -> int:
                 parsed.session_id,
                 parsed.actor_id,
                 invocation_id,
-                row.get("timestamp") or "",
-                "",
+                ts,
+                model,
                 int(usage.get("input_tokens") or 0),
                 int(usage.get("cached_input_tokens") or 0),
                 int(usage.get("output_tokens") or 0),
@@ -372,6 +488,64 @@ def scrub_meta(meta: dict[str, Any]) -> dict[str, Any]:
         "model_provider",
     }
     return {key: meta.get(key) for key in sorted(allowed) if key in meta}
+
+
+def scrub_copilot_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    allowed = {"sessionId", "producer", "copilotVersion", "startTime", "alreadyInUse"}
+    scrubbed = {key: meta.get(key) for key in sorted(allowed) if key in meta}
+    workspace = copilot_workspace(meta)
+    if workspace:
+        scrubbed["cwd"] = workspace
+    return scrubbed
+
+
+def usage_from_copilot_data(data: dict[str, Any]) -> dict[str, int]:
+    input_tokens = int(data.get("inputTokens") or 0)
+    output_tokens = int(data.get("outputTokens") or 0)
+    reasoning_tokens = int(data.get("reasoningTokens") or 0)
+    return {
+        "input_tokens": input_tokens,
+        "cached_input_tokens": int(data.get("cacheReadTokens") or 0),
+        "output_tokens": output_tokens,
+        "raw_total_tokens": input_tokens + output_tokens + reasoning_tokens,
+        "total_tokens": input_tokens + output_tokens + reasoning_tokens,
+    }
+
+
+def copilot_workspace(meta: dict[str, Any]) -> str:
+    context = meta.get("context") or {}
+    if isinstance(context, dict):
+        cwd = context.get("cwd")
+        if isinstance(cwd, str):
+            return cwd
+    return ""
+
+
+def infer_copilot_actor_id(session_id: str, workspace: str) -> str:
+    workspace_slug = slug(workspace)
+    if workspace_slug:
+        return f"unknown.github-copilot.{workspace_slug}"
+    return f"unknown.github-copilot-session.{session_id[:12]}"
+
+
+def copilot_command_from_tool_complete(data: dict[str, Any]) -> str:
+    telemetry = data.get("toolTelemetry") or {}
+    properties = telemetry.get("properties") if isinstance(telemetry, dict) else {}
+    if isinstance(properties, dict):
+        command = properties.get("command")
+        if isinstance(command, str) and command.strip():
+            return command.strip()
+    result = data.get("result")
+    if isinstance(result, dict):
+        content = result.get("content")
+        if isinstance(content, str) and content.strip():
+            return str(data.get("toolName") or "tool")
+    return str(data.get("toolName") or "").strip()
+
+
+def is_copilot_source(source_label: str, path: Path) -> bool:
+    lowered = source_label.lower()
+    return "copilot" in lowered or "/.copilot/" in str(path) or path.name == COPILOT_EVENTS_GLOB
 
 
 def output_shape(output: str) -> dict[str, Any]:

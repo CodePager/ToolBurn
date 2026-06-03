@@ -16,6 +16,7 @@ from toolburn.schema import initialize_database, table_names
 REPORT_GROUPS = ("actor", "session", "source", "tool")
 DEFAULT_CODEX_ROOT = Path("/root/.codex/sessions")
 DEFAULT_OPENCLAW_ROOT = Path("/root/.openclaw/agents/main/agent/codex-home/sessions")
+DEFAULT_COPILOT_ROOT = Path("/root/.copilot/session-state")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scan_parser.add_argument("--codex", type=Path, help="Codex sessions directory or JSONL file")
     scan_parser.add_argument("--openclaw", type=Path, help="OpenClaw sessions directory or JSONL file")
+    scan_parser.add_argument("--copilot", type=Path, help="GitHub Copilot session-state directory or JSONL file")
 
     recent_parser = subparsers.add_parser(
         "recent", help="scan local defaults and show recent token burn"
@@ -51,6 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
     recent_parser.add_argument("--no-scan", action="store_true", help="reuse the DB")
     recent_parser.add_argument("--codex", type=Path, default=DEFAULT_CODEX_ROOT)
     recent_parser.add_argument("--openclaw", type=Path, default=DEFAULT_OPENCLAW_ROOT)
+    recent_parser.add_argument("--copilot", type=Path, default=DEFAULT_COPILOT_ROOT)
+
+    subparsers.add_parser("sources", help="show supported and planned evidence sources")
 
     for command in ("du", "top"):
         report_parser = subparsers.add_parser(command, help=f"show token usage by {command}")
@@ -88,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         sources = parse_sources(args)
         if not sources:
-            parser.error("scan requires at least one --source, --codex, or --openclaw path")
+            parser.error("scan requires at least one --source, --codex, --openclaw, or --copilot path")
         counts = scan_sources(args.db, sources)
         print(
             "scanned {files} files, {sessions} sessions, {token_events} token events, "
@@ -102,7 +107,7 @@ def main(argv: list[str] | None = None) -> int:
         sources = existing_default_sources(args)
         if not args.no_scan:
             if not sources:
-                parser.error("no default Codex/OpenClaw session roots found")
+                parser.error("no default Codex/OpenClaw/Copilot session roots found")
             counts = scan_sources(db_path, sources)
             print(
                 "scanned {files} files, {sessions} sessions, {token_events} token events, "
@@ -115,6 +120,10 @@ def main(argv: list[str] | None = None) -> int:
         print("")
         print("Top tools")
         print(format_table(top_report(db_path, group_by="tool", limit=args.limit, since=since)))
+        return 0
+
+    if args.command == "sources":
+        print(format_sources())
         return 0
 
     if args.command == "du":
@@ -147,6 +156,8 @@ def parse_sources(args: argparse.Namespace) -> list[SourceSpec]:
         sources.append(SourceSpec("codex", args.codex))
     if args.openclaw:
         sources.append(SourceSpec("openclaw", args.openclaw))
+    if getattr(args, "copilot", None):
+        sources.append(SourceSpec("github-copilot", args.copilot))
     for item in args.source:
         if "=" not in item:
             raise SystemExit(f"--source must use LABEL=PATH: {item}")
@@ -161,6 +172,8 @@ def existing_default_sources(args: argparse.Namespace) -> list[SourceSpec]:
         sources.append(SourceSpec("codex", args.codex))
     if args.openclaw and args.openclaw.exists():
         sources.append(SourceSpec("openclaw", args.openclaw))
+    if args.copilot and args.copilot.exists():
+        sources.append(SourceSpec("github-copilot", args.copilot))
     return sources
 
 
@@ -171,6 +184,29 @@ def hours_ago_iso(hours: float) -> str:
 
 def default_recent_db_path() -> Path:
     return Path(gettempdir()) / "toolburn-recent.sqlite"
+
+
+def format_sources() -> str:
+    rows = [
+        ("codex", "supported", str(DEFAULT_CODEX_ROOT), "Codex rollout JSONL token_count rows"),
+        ("openclaw", "supported", str(DEFAULT_OPENCLAW_ROOT), "OpenClaw-owned Codex rollout JSONL"),
+        (
+            "github-copilot",
+            "experimental",
+            str(DEFAULT_COPILOT_ROOT),
+            "Copilot CLI session-state events.jsonl; shutdown/model usage is cumulative",
+        ),
+        (
+            "claude-code",
+            "untested",
+            "~/.claude",
+            "settings and CLAUDE.md locations are documented; transcript parsing waits for a confirmed session sample",
+        ),
+    ]
+    width = max(len(row[0]) for row in rows)
+    return "\n".join(
+        f"{name:<{width}}  {status:<12}  {path}  {note}" for name, status, path, note in rows
+    )
 
 
 if __name__ == "__main__":
