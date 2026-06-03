@@ -13,9 +13,43 @@ creation, generated-file hygiene, and obvious secret-shaped strings.
 
 ## Local CLI
 
+Install or update from GitHub:
+
 ```bash
-PYTHONPATH=src python3 -m toolburn.cli --help
-PYTHONPATH=src python3 -m toolburn.cli schema --db /tmp/toolburn.sqlite
+curl -fsSL https://raw.githubusercontent.com/CodePager/toolburn/main/install.sh | sh
+```
+
+Install from a checkout:
+
+```bash
+./scripts/install-local.sh
+```
+
+```bash
+toolburn --help
+toolburn recent --help
+```
+
+The normal local check is:
+
+```bash
+toolburn recent --hours 23 --limit 20
+```
+
+This scans the default local Codex and OpenClaw session roots, writes a reusable
+SQLite database under `/tmp`, and prints top actors and top tools for the
+lookback window.
+
+Use an explicit database when you want repeatable drilldown:
+
+```bash
+toolburn scan --db /tmp/toolburn.sqlite \
+  --openclaw /root/.openclaw/agents/main/agent/codex-home/sessions \
+  --codex /root/.codex/sessions
+
+toolburn top --db /tmp/toolburn.sqlite --by actor --since 2026-06-02T10:00:00.000Z
+toolburn top --db /tmp/toolburn.sqlite --by tool --since 2026-06-02T10:00:00.000Z
+toolburn explain --db /tmp/toolburn.sqlite <actor-or-session-id> --for-agent
 ```
 
 ## Evidence Handling
@@ -25,6 +59,8 @@ PYTHONPATH=src python3 -m toolburn.cli schema --db /tmp/toolburn.sqlite
 - Store only fixtures that are synthetic or explicitly sanitized.
 - Prefer compact JSON summaries with counts, hashes, timestamps, and sample
   bounds instead of raw log bodies.
+- Keep generated SQLite databases in `/tmp` unless there is an explicit reason
+  to persist one elsewhere.
 
 ## Phase 1 Closeout Proof
 
@@ -34,4 +70,3 @@ Before moving a Phase 1 plan to completed, capture:
 - exact parser sources supported
 - sample `du`, `top`, `tree`, and `explain --for-agent` outputs
 - evidence that the run used no model calls and no network
-

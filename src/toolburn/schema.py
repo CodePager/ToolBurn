@@ -100,6 +100,12 @@ def initialize_database(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(path) as conn:
         conn.executescript(SCHEMA_SQL)
+        conn.execute(
+            "create index if not exists token_events_actor_ts on token_events(actor_id, ts)"
+        )
+        conn.execute(
+            "create index if not exists token_events_session_ts on token_events(session_id, ts)"
+        )
         conn.commit()
 
 
@@ -110,3 +116,9 @@ def table_names(path: Path) -> list[str]:
         ).fetchall()
     return [row[0] for row in rows]
 
+
+def connect(path: Path) -> sqlite3.Connection:
+    initialize_database(path)
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    return conn
