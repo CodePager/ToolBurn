@@ -16,7 +16,6 @@ agent can act on.
 
 ```text
 AGENTS.md
-CODEPAGER.md
 ARCHITECTURE.md
 README.md
 docs/
@@ -72,4 +71,3 @@ prove value against real traces.
 Attribution is deterministic and confidence-bearing. If a label cannot be
 proven from metadata, paths, command signatures, runtime ownership, or stable
 recurrence, Toolburn must keep it in an explicit unknown bucket.
-

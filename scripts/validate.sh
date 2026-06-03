@@ -15,7 +15,6 @@ require_file() {
 }
 
 require_file AGENTS.md
-require_file CODEPAGER.md
 require_file ARCHITECTURE.md
 require_file README.md
 require_file pyproject.toml
@@ -57,7 +56,7 @@ grep -q '^token_events$' /tmp/toolburn-schema.txt
 rm -f "$tmp_db"
 
 if grep -RInE 'cp_live_[A-Za-z0-9]+|assistant\.env|telegram|session-key|webhook|BEGIN (RSA|OPENSSH|PRIVATE) KEY|github_pat_' \
-  AGENTS.md CODEPAGER.md ARCHITECTURE.md README.md docs scripts src tests pyproject.toml \
+  AGENTS.md ARCHITECTURE.md README.md docs scripts src tests pyproject.toml \
   | grep -v '^scripts/validate.sh:' >/tmp/toolburn-secretish.txt; then
   echo "secret-shaped or private-runtime strings found:" >&2
   cat /tmp/toolburn-secretish.txt >&2

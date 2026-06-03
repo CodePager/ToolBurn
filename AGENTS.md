@@ -4,7 +4,6 @@ AGENTS.md is the map for this repo, not the manual. Keep durable execution
 truth in docs, tests, scripts, and source files that agents can inspect.
 
 ## Start Here
-- Project cheat sheet: [CODEPAGER.md](/srv/pager/repos/toolburn/CODEPAGER.md)
 - Architecture: [ARCHITECTURE.md](/srv/pager/repos/toolburn/ARCHITECTURE.md)
 - Product story: [docs/product-story.md](/srv/pager/repos/toolburn/docs/product-story.md)
 - Runbook: [docs/runbook.md](/srv/pager/repos/toolburn/docs/runbook.md)
@@ -27,4 +26,3 @@ truth in docs, tests, scripts, and source files that agents can inspect.
 
 ## Validate
 - `./scripts/validate.sh`
-
