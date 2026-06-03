@@ -1,29 +1,18 @@
 # Toolburn
 
-Public CodePager module repo for building a local token burn profiler.
+Toolburn is a local token burn profiler for coding agents.
 
-Toolburn starts as an offline CLI, roughly "`ncdu` for token burn." It reads
-local evidence, normalizes actor/tool/session/token records, and reports the
-burn paths that deserve optimization.
+Think of it as `ncdu` for token usage: it scans the session evidence already on
+your machine, groups spend by actor, tool, session, and source, then points at
+the burn paths worth fixing.
 
-## Current Status
+Toolburn is read-only. It does not call models, intercept prompts, or upload
+anything. Phase 1 is an offline CLI for answering a very practical question:
 
-This repo contains the Phase 1 offline profiler spine. It can scan local
-Codex/OpenClaw JSONL evidence into SQLite and report recent token burn by actor,
-session, source, or tool. GitHub Copilot CLI session-state parsing is
-experimental.
+> What used the tokens, and was it a human session, a background job, or a tool
+> loop?
 
-The active build plan is:
-
-- [docs/exec-plans/active/toolburn-3-phase-plan.md](/srv/pager/repos/toolburn/docs/exec-plans/active/toolburn-3-phase-plan.md)
-
-## Validate
-
-```bash
-./scripts/validate.sh
-```
-
-## CLI
+## Install
 
 Install or update the command:
 
@@ -32,7 +21,7 @@ curl -fsSL https://raw.githubusercontent.com/CodePager/toolburn/main/install.sh 
 toolburn --help
 ```
 
-From a checkout, install the local command:
+From a local checkout:
 
 ```bash
 cd /srv/pager/repos/toolburn
@@ -40,35 +29,99 @@ cd /srv/pager/repos/toolburn
 toolburn --help
 ```
 
-Most humans and agents should start with:
+## Start Here
 
 ```bash
 toolburn recent --hours 23
 ```
 
-See what Toolburn knows how to scan:
+That scans the default local session roots and prints the top actors and tools
+for the lookback window.
+
+See supported evidence sources:
 
 ```bash
 toolburn sources
 ```
 
-Useful commands:
+## Commands Humans Actually Use
+
+### Recent Burn
 
 ```bash
 toolburn recent --hours 23 --limit 20
+toolburn recent --hours 6 --limit 15
+toolburn recent --hours 1 --limit 20
+toolburn recent --hours 23 --no-scan
+```
+
+### Human vs Background Spend
+
+```bash
 toolburn recent --hours 23 --actor-type background
 toolburn recent --hours 23 --actor-type human
-toolburn recent --hours 23 --no-scan
+toolburn recent --hours 1 --actor-type background --limit 20
+```
+
+### Scan Explicit Sources
+
+```bash
 toolburn scan --db /tmp/toolburn.sqlite --openclaw /root/.openclaw/agents/main/agent/codex-home/sessions --codex /root/.codex/sessions --copilot /root/.copilot/session-state
+toolburn scan --db /tmp/toolburn.sqlite --codex /root/.codex/sessions
+toolburn scan --db /tmp/toolburn.sqlite --openclaw /root/.openclaw/agents/main/agent/codex-home/sessions
+toolburn scan --db /tmp/toolburn.sqlite --copilot /root/.copilot/session-state
+toolburn scan --db /tmp/toolburn.sqlite --source codex=/path/to/rollout.jsonl
+```
+
+### Rank Burn By Actor, Tool, Session, Or Source
+
+```bash
 toolburn top --db /tmp/toolburn.sqlite --by actor --since 2026-06-02T10:00:00.000Z
 toolburn top --db /tmp/toolburn.sqlite --by tool --since 2026-06-02T10:00:00.000Z
 toolburn top --db /tmp/toolburn.sqlite --by actor --actor-type background
+toolburn top --db /tmp/toolburn.sqlite --by session --limit 30
+toolburn top --db /tmp/toolburn.sqlite --by source --limit 30
+toolburn du --db /tmp/toolburn.sqlite --by tool --actor-type human
+```
+
+### Explain A Suspicious Actor Or Session
+
+```bash
 toolburn explain --db /tmp/toolburn.sqlite <actor-or-session-id> --for-agent
+toolburn tree --db /tmp/toolburn.sqlite <actor-or-session-id>
 toolburn export --db /tmp/toolburn.sqlite --target <actor-or-session-id>
 ```
 
-Run `toolburn <command> --help` for command-specific options. From the repo
-root, `./toolburn` also works without installation.
+### Useful Investigation Patterns
+
+Find background jobs burning tokens in the last hour:
+
+```bash
+toolburn recent --hours 1 --actor-type background --limit 20
+```
+
+Check whether a suspected fix actually stopped new burn after a timestamp:
+
+```bash
+toolburn top --db /tmp/toolburn-recent.sqlite --by actor --since 2026-06-03T11:29:40.000Z --actor-type background
+```
+
+Separate human coding work from agent automation:
+
+```bash
+toolburn recent --hours 23 --actor-type human
+toolburn recent --hours 23 --actor-type background
+```
+
+Inspect one source file without scanning everything:
+
+```bash
+toolburn scan --db /tmp/one-session.sqlite --source codex=/path/to/rollout-2026-06-03.jsonl
+toolburn top --db /tmp/one-session.sqlite --by tool
+```
+
+Run `toolburn <command> --help` for command-specific options. From this repo's
+checkout, `./toolburn` also works without installation.
 
 ## Source Support
 
@@ -88,3 +141,15 @@ References:
 - [GitHub Copilot CLI README](https://docs.github.com/copilot/concepts/agents/about-copilot-cli)
 - [Claude Code settings](https://docs.anthropic.com/en/docs/claude-code/settings)
 - [Claude Code memory](https://docs.anthropic.com/en/docs/claude-code/memory)
+
+## Current Status
+
+Toolburn currently ships the Phase 1 offline profiler spine. It can scan local
+Codex/OpenClaw JSONL evidence into SQLite and report recent token burn by actor,
+session, source, or tool. GitHub Copilot CLI session-state parsing is
+experimental. Claude Code is listed as untested until a real local transcript is
+confirmed.
+
+The active build plan is:
+
+- [docs/exec-plans/active/toolburn-3-phase-plan.md](docs/exec-plans/active/toolburn-3-phase-plan.md)
