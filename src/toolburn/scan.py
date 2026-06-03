@@ -297,15 +297,16 @@ def infer_actor_id(
 ) -> tuple[str, str, float]:
     haystack = "\n".join(evidence_text)
     session_id = str(meta.get("id") or stable_id(path, "session"))[:12]
-    if "sessionKey" in haystack and ":direct:" in haystack:
+    openclaw_source = "openclaw" in source_label.lower() or "/.openclaw/" in str(path)
+    if openclaw_source and "sessionKey" in haystack and ":direct:" in haystack:
         match = re.search(r"agent:[^:]+:[^:]+:direct:(\d+)", haystack)
         suffix = match.group(1) if match else "unknown"
         return f"background.openclaw.direct-session.{suffix}", "background", 0.78
-    if "GOS watchdog 30m" in haystack or "run_watchdog_cycle.py" in haystack:
+    if openclaw_source and ("GOS watchdog 30m" in haystack or "run_watchdog_cycle.py" in haystack):
         return "background.openclaw.gos-watchdog-30m", "background", 0.8
-    if "heartbeat_scan.py" in haystack or "spam_cleanup.py" in haystack:
+    if openclaw_source and ("heartbeat_scan.py" in haystack or "spam_cleanup.py" in haystack):
         return "background.openclaw.heartbeat", "background", 0.75
-    if "openclaw" in source_label.lower() or "/.openclaw/" in str(path):
+    if openclaw_source:
         return f"unknown.openclaw-session.{session_id}", "unknown", 0.45
     workspace = slug(str(meta.get("cwd") or path.parent.name))
     if workspace:
