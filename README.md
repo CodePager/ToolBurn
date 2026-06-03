@@ -32,7 +32,7 @@ toolburn --help
 ## Start Here
 
 ```bash
-toolburn recent --hours 23
+toolburn recent --hours 24
 ```
 
 That scans the default local session roots and prints the top actors and tools
@@ -49,17 +49,17 @@ toolburn sources
 ### Recent Burn
 
 ```bash
-toolburn recent --hours 23 --limit 20
+toolburn recent --hours 24 --limit 20
 toolburn recent --hours 6 --limit 15
 toolburn recent --hours 1 --limit 20
-toolburn recent --hours 23 --no-scan
+toolburn recent --hours 24 --no-scan
 ```
 
 ### Human vs Background Spend
 
 ```bash
-toolburn recent --hours 23 --actor-type background
-toolburn recent --hours 23 --actor-type human
+toolburn recent --hours 24 --actor-type background
+toolburn recent --hours 24 --actor-type human
 toolburn recent --hours 1 --actor-type background --limit 20
 ```
 
@@ -109,8 +109,8 @@ toolburn top --db /tmp/toolburn-recent.sqlite --by actor --since 2026-06-03T11:2
 Separate human coding work from agent automation:
 
 ```bash
-toolburn recent --hours 23 --actor-type human
-toolburn recent --hours 23 --actor-type background
+toolburn recent --hours 24 --actor-type human
+toolburn recent --hours 24 --actor-type background
 ```
 
 Inspect one source file without scanning everything:

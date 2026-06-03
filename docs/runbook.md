@@ -33,7 +33,7 @@ toolburn recent --help
 The normal local check is:
 
 ```bash
-toolburn recent --hours 23 --limit 20
+toolburn recent --hours 24 --limit 20
 ```
 
 This scans the default local Codex and OpenClaw session roots, writes a reusable

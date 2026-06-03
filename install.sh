@@ -49,4 +49,4 @@ chmod 755 "$bin_dir/toolburn"
 
 echo "installed toolburn at $bin_dir/toolburn"
 "$bin_dir/toolburn" --help >/dev/null
-echo "try: toolburn recent --hours 23"
+echo "try: toolburn recent --hours 24"
