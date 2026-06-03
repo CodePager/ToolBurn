@@ -14,6 +14,7 @@ from toolburn.schema import initialize_database, table_names
 
 
 REPORT_GROUPS = ("actor", "session", "source", "tool")
+ACTOR_TYPES = ("human", "background", "unknown")
 DEFAULT_CODEX_ROOT = Path("/root/.codex/sessions")
 DEFAULT_OPENCLAW_ROOT = Path("/root/.openclaw/agents/main/agent/codex-home/sessions")
 DEFAULT_COPILOT_ROOT = Path("/root/.copilot/session-state")
@@ -51,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     recent_parser.add_argument("--limit", type=int, default=10)
     recent_parser.add_argument("--db", type=Path, help="SQLite DB path")
     recent_parser.add_argument("--no-scan", action="store_true", help="reuse the DB")
+    recent_parser.add_argument("--actor-type", choices=ACTOR_TYPES, help="only show one actor type")
     recent_parser.add_argument("--codex", type=Path, default=DEFAULT_CODEX_ROOT)
     recent_parser.add_argument("--openclaw", type=Path, default=DEFAULT_OPENCLAW_ROOT)
     recent_parser.add_argument("--copilot", type=Path, default=DEFAULT_COPILOT_ROOT)
@@ -63,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
         report_parser.add_argument("--by", choices=REPORT_GROUPS, default="actor")
         report_parser.add_argument("--limit", type=int, default=20)
         report_parser.add_argument("--since", help="inclusive ISO timestamp lower bound")
+        report_parser.add_argument("--actor-type", choices=ACTOR_TYPES, help="only show one actor type")
 
     tree_parser = subparsers.add_parser("tree", help="show compact actor drilldown")
     tree_parser.add_argument("--db", required=True, type=Path, help="SQLite DB path")
@@ -114,12 +117,34 @@ def main(argv: list[str] | None = None) -> int:
                 "{invocations} invocations".format(**counts)
             )
         print(f"since {since}")
+        if args.actor_type:
+            print(f"actor_type {args.actor_type}")
         print("")
         print("Top actors")
-        print(format_table(top_report(db_path, group_by="actor", limit=args.limit, since=since)))
+        print(
+            format_table(
+                top_report(
+                    db_path,
+                    group_by="actor",
+                    limit=args.limit,
+                    since=since,
+                    actor_type=args.actor_type,
+                )
+            )
+        )
         print("")
         print("Top tools")
-        print(format_table(top_report(db_path, group_by="tool", limit=args.limit, since=since)))
+        print(
+            format_table(
+                top_report(
+                    db_path,
+                    group_by="tool",
+                    limit=args.limit,
+                    since=since,
+                    actor_type=args.actor_type,
+                )
+            )
+        )
         return 0
 
     if args.command == "sources":
@@ -127,11 +152,31 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "du":
-        print(format_table(du_report(args.db, group_by=args.by, limit=args.limit, since=args.since)))
+        print(
+            format_table(
+                du_report(
+                    args.db,
+                    group_by=args.by,
+                    limit=args.limit,
+                    since=args.since,
+                    actor_type=args.actor_type,
+                )
+            )
+        )
         return 0
 
     if args.command == "top":
-        print(format_table(top_report(args.db, group_by=args.by, limit=args.limit, since=args.since)))
+        print(
+            format_table(
+                top_report(
+                    args.db,
+                    group_by=args.by,
+                    limit=args.limit,
+                    since=args.since,
+                    actor_type=args.actor_type,
+                )
+            )
+        )
         return 0
 
     if args.command == "tree":

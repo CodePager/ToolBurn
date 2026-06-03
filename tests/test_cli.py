@@ -353,6 +353,55 @@ class CliTests(unittest.TestCase):
             self.assertIn("background.openclaw.cron.voice-models-daily-maintain", output)
             self.assertIn("background.openclaw.dream-diary", output)
 
+    def test_reports_filter_by_actor_type(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "toolburn.sqlite"
+            codex_evidence = root / "codex" / "rollout-2026-06-01T22-54-15-codex.jsonl"
+            openclaw_evidence = root / "openclaw" / "rollout-2026-06-01T22-54-15-openclaw.jsonl"
+            write_jsonl(codex_evidence, codex_fixture_rows())
+            write_jsonl(openclaw_evidence, fixture_rows())
+
+            main(
+                [
+                    "scan",
+                    "--db",
+                    str(db_path),
+                    "--codex",
+                    str(codex_evidence),
+                    "--openclaw",
+                    str(openclaw_evidence),
+                ]
+            )
+
+            human_out = io.StringIO()
+            with contextlib.redirect_stdout(human_out):
+                self.assertEqual(
+                    main(["top", "--db", str(db_path), "--by", "actor", "--actor-type", "human"]),
+                    0,
+                )
+            self.assertIn("human.codex.workspace.pager", human_out.getvalue())
+            self.assertNotIn("background.openclaw", human_out.getvalue())
+
+            background_out = io.StringIO()
+            with contextlib.redirect_stdout(background_out):
+                self.assertEqual(
+                    main(
+                        [
+                            "top",
+                            "--db",
+                            str(db_path),
+                            "--by",
+                            "actor",
+                            "--actor-type",
+                            "background",
+                        ]
+                    ),
+                    0,
+                )
+            self.assertIn("background.openclaw.direct-session.0000000000", background_out.getvalue())
+            self.assertNotIn("human.codex.workspace.pager", background_out.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

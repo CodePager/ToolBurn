@@ -9,10 +9,23 @@ from toolburn.schema import connect
 
 
 def du_report(
-    db_path: Path, group_by: str = "actor", limit: int = 20, since: str | None = None
+    db_path: Path,
+    group_by: str = "actor",
+    limit: int = 20,
+    since: str | None = None,
+    actor_type: str | None = None,
 ) -> list[dict]:
     column, joins = group_query_parts(group_by)
-    where = "where token_events.ts >= ?" if since else ""
+    filters = []
+    params: list[object] = []
+    if since:
+        filters.append("token_events.ts >= ?")
+        params.append(since)
+    if actor_type:
+        joins = f"{joins}\njoin actors on actors.actor_id = token_events.actor_id"
+        filters.append("actors.actor_type = ?")
+        params.append(actor_type)
+    where = f"where {' and '.join(filters)}" if filters else ""
     query = f"""
         select {column} as label,
                count(token_events.token_event_id) as events,
@@ -28,15 +41,20 @@ def du_report(
         limit ?
     """
     with connect(db_path) as conn:
-        params = (since, limit) if since else (limit,)
-        rows = conn.execute(query, params).fetchall()
+        rows = conn.execute(query, [*params, limit]).fetchall()
     return [dict(row) for row in rows]
 
 
 def top_report(
-    db_path: Path, group_by: str = "actor", limit: int = 20, since: str | None = None
+    db_path: Path,
+    group_by: str = "actor",
+    limit: int = 20,
+    since: str | None = None,
+    actor_type: str | None = None,
 ) -> list[dict]:
-    return du_report(db_path, group_by=group_by, limit=limit, since=since)
+    return du_report(
+        db_path, group_by=group_by, limit=limit, since=since, actor_type=actor_type
+    )
 
 
 def explain_report(db_path: Path, target: str) -> dict:

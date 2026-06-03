@@ -56,10 +56,13 @@ Useful commands:
 
 ```bash
 toolburn recent --hours 23 --limit 20
+toolburn recent --hours 23 --actor-type background
+toolburn recent --hours 23 --actor-type human
 toolburn recent --hours 23 --no-scan
 toolburn scan --db /tmp/toolburn.sqlite --openclaw /root/.openclaw/agents/main/agent/codex-home/sessions --codex /root/.codex/sessions --copilot /root/.copilot/session-state
 toolburn top --db /tmp/toolburn.sqlite --by actor --since 2026-06-02T10:00:00.000Z
 toolburn top --db /tmp/toolburn.sqlite --by tool --since 2026-06-02T10:00:00.000Z
+toolburn top --db /tmp/toolburn.sqlite --by actor --actor-type background
 toolburn explain --db /tmp/toolburn.sqlite <actor-or-session-id> --for-agent
 toolburn export --db /tmp/toolburn.sqlite --target <actor-or-session-id>
 ```
