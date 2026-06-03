@@ -144,6 +144,61 @@ def copilot_fixture_rows() -> list[dict]:
     ]
 
 
+def codex_fixture_rows() -> list[dict]:
+    rows = fixture_rows()
+    rows[0]["payload"] = {
+        "id": "codex-session-1",
+        "timestamp": "2026-06-01T22:54:15.000Z",
+        "cwd": "/srv/pager",
+        "originator": "codex",
+        "source": "vscode",
+    }
+    rows[1]["payload"]["arguments"] = json.dumps({"command": "git status --short"})
+    rows[2]["payload"]["output"] = "clean"
+    return rows
+
+
+def openclaw_cron_fixture_rows() -> list[dict]:
+    rows = fixture_rows()
+    rows[0]["payload"]["id"] = "cron-session-1"
+    rows[1]["payload"]["arguments"] = json.dumps({"command": "tool_search exec command"})
+    rows[2]["payload"]["output"] = "no tools found"
+    rows.insert(
+        1,
+        {
+            "timestamp": "2026-06-01T22:54:16.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "user_message",
+                "message": (
+                    "[cron:b2d1fd93-38c9-4c4f-bf58-926db57cf5d0 "
+                    "voice-models daily maintain] Run the daily maintain cycle."
+                ),
+            },
+        },
+    )
+    return rows
+
+
+def openclaw_dream_fixture_rows() -> list[dict]:
+    rows = fixture_rows()
+    rows[0]["payload"]["id"] = "dream-session-1"
+    rows[1]["payload"]["arguments"] = json.dumps({"command": "write"})
+    rows[2]["payload"]["output"] = "done"
+    rows.insert(
+        1,
+        {
+            "timestamp": "2026-06-01T22:54:16.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "user_message",
+                "message": "Write a dream diary entry from these memory fragments.",
+            },
+        },
+    )
+    return rows
+
+
 class CliTests(unittest.TestCase):
     def test_help_returns_zero(self) -> None:
         stdout = io.StringIO()
@@ -254,7 +309,7 @@ class CliTests(unittest.TestCase):
             output = du_out.getvalue()
             self.assertIn("400 raw", output)
             self.assertIn("260 cached", output)
-            self.assertIn("unknown.github-copilot.toolburn", output)
+            self.assertIn("human.github-copilot.workspace.toolburn", output)
 
     def test_sources_command_lists_support_status(self) -> None:
         stdout = io.StringIO()
@@ -265,6 +320,38 @@ class CliTests(unittest.TestCase):
         self.assertIn("experimental", output)
         self.assertIn("claude-code", output)
         self.assertIn("untested", output)
+
+    def test_codex_workspace_sessions_are_labeled_human(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            evidence = root / "rollout-2026-06-01T22-54-15-test.jsonl"
+            db_path = root / "toolburn.sqlite"
+            write_jsonl(evidence, codex_fixture_rows())
+
+            main(["scan", "--db", str(db_path), "--codex", str(evidence)])
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(main(["du", "--db", str(db_path), "--by", "actor"]), 0)
+            self.assertIn("human.codex.workspace.pager", stdout.getvalue())
+
+    def test_openclaw_cron_and_dream_diary_sessions_are_labeled(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "toolburn.sqlite"
+            cron_evidence = root / "rollout-2026-06-01T22-54-15-cron.jsonl"
+            dream_evidence = root / "rollout-2026-06-01T22-54-15-dream.jsonl"
+            write_jsonl(cron_evidence, openclaw_cron_fixture_rows())
+            write_jsonl(dream_evidence, openclaw_dream_fixture_rows())
+
+            main(["scan", "--db", str(db_path), "--openclaw", str(root)])
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(main(["du", "--db", str(db_path), "--by", "actor"]), 0)
+            output = stdout.getvalue()
+            self.assertIn("background.openclaw.cron.voice-models-daily-maintain", output)
+            self.assertIn("background.openclaw.dream-diary", output)
 
 
 if __name__ == "__main__":

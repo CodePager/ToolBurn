@@ -95,8 +95,18 @@ def parse_session_file(path: Path, source_label: str) -> ParsedSession | None:
             meta.update(payload)
             continue
 
-        if row_type == "event_msg" and payload.get("type") == TOKEN_EVENT_TYPE:
-            token_rows.append({"row": row, "line_no": line_no})
+        if row_type == "event_msg":
+            if payload.get("type") == TOKEN_EVENT_TYPE:
+                token_rows.append({"row": row, "line_no": line_no})
+                continue
+            message = payload.get("message")
+            if isinstance(message, str) and payload.get("type") in {
+                "user_message",
+                "agent_message",
+                "task_started",
+                "task_complete",
+            }:
+                evidence_text.append(evidence_excerpt(message))
             continue
 
         if row_type != "response_item" or not isinstance(payload, dict):
@@ -104,7 +114,7 @@ def parse_session_file(path: Path, source_label: str) -> ParsedSession | None:
 
         text = compact_text(payload)
         if text:
-            evidence_text.append(text[:2000])
+            evidence_text.append(evidence_excerpt(text))
 
         if payload.get("type") in {"function_call", "custom_tool_call"}:
             call_id = payload.get("call_id") or payload.get("id") or stable_id(
@@ -247,7 +257,7 @@ def parse_copilot_session_file(path: Path, source_label: str) -> ParsedSession |
     parsed = ParsedSession(
         session_id=session_id,
         actor_id=infer_copilot_actor_id(session_id, workspace),
-        actor_type="unknown",
+        actor_type="human",
         source=source_label,
         path=path,
         workspace=workspace,
@@ -423,11 +433,30 @@ def infer_actor_id(
     if openclaw_source and ("heartbeat_scan.py" in haystack or "spam_cleanup.py" in haystack):
         return "background.openclaw.heartbeat", "background", 0.75
     if openclaw_source:
+        cron_name = openclaw_cron_name(haystack)
+        if cron_name:
+            return f"background.openclaw.cron.{slug(cron_name)}", "background", 0.72
+    if openclaw_source and "Write a dream diary entry" in haystack:
+        return "background.openclaw.dream-diary", "background", 0.68
+    if openclaw_source:
         return f"unknown.openclaw-session.{session_id}", "unknown", 0.45
     workspace = slug(str(meta.get("cwd") or path.parent.name))
     if workspace:
-        return f"unknown.human-like.codex-session.{workspace}", "unknown", 0.35
-    return f"unknown.codex-session.{session_id}", "unknown", 0.2
+        return f"human.codex.workspace.{workspace}", "human", 0.55
+    return f"human.codex.session.{session_id}", "human", 0.35
+
+
+def openclaw_cron_name(text: str) -> str:
+    match = re.search(r"\[cron:[0-9a-f-]+\s+([^\]]+)\]", text, flags=re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return ""
+
+
+def evidence_excerpt(text: str, limit: int = 2000) -> str:
+    if len(text) <= limit * 2:
+        return text
+    return f"{text[:limit]}\n{text[-limit:]}"
 
 
 def command_from_call_payload(payload: dict[str, Any]) -> str:
@@ -455,7 +484,7 @@ def compact_text(payload: dict[str, Any]) -> str:
     if isinstance(payload.get("content"), list):
         for part in payload["content"]:
             if isinstance(part, dict):
-                text = part.get("text") or part.get("output_text")
+                text = part.get("text") or part.get("output_text") or part.get("input_text")
                 if isinstance(text, str):
                     values.append(text)
     for key in ("output", "arguments", "name"):
@@ -524,8 +553,8 @@ def copilot_workspace(meta: dict[str, Any]) -> str:
 def infer_copilot_actor_id(session_id: str, workspace: str) -> str:
     workspace_slug = slug(workspace)
     if workspace_slug:
-        return f"unknown.github-copilot.{workspace_slug}"
-    return f"unknown.github-copilot-session.{session_id[:12]}"
+        return f"human.github-copilot.workspace.{workspace_slug}"
+    return f"human.github-copilot.session.{session_id[:12]}"
 
 
 def copilot_command_from_tool_complete(data: dict[str, Any]) -> str:
