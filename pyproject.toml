@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "toolburn"
+version = "0.1.0"
+description = "Local token burn profiler for CodePager modules"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+
+[project.scripts]
+toolburn = "toolburn.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

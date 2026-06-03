@@ -1,0 +1,30 @@
+# Toolburn
+
+AGENTS.md is the map for this repo, not the manual. Keep durable execution
+truth in docs, tests, scripts, and source files that agents can inspect.
+
+## Start Here
+- Project cheat sheet: [CODEPAGER.md](/srv/pager/repos/toolburn/CODEPAGER.md)
+- Architecture: [ARCHITECTURE.md](/srv/pager/repos/toolburn/ARCHITECTURE.md)
+- Product story: [docs/product-story.md](/srv/pager/repos/toolburn/docs/product-story.md)
+- Runbook: [docs/runbook.md](/srv/pager/repos/toolburn/docs/runbook.md)
+- Quality gates: [docs/quality.md](/srv/pager/repos/toolburn/docs/quality.md)
+- Adapter contract: [docs/adapter-contract.md](/srv/pager/repos/toolburn/docs/adapter-contract.md)
+- Active plans: [docs/exec-plans/active](/srv/pager/repos/toolburn/docs/exec-plans/active)
+- Completed plans: [docs/exec-plans/completed](/srv/pager/repos/toolburn/docs/exec-plans/completed)
+- Harness doctrine: [/srv/harness-engineering.md](/srv/harness-engineering.md)
+
+## Working Rules
+- Humans steer. Agents execute.
+- Phase 1 is read-only, model-free, network-free, and local-first.
+- Never pretend unknown attribution is known.
+- Do not add dashboards, wrappers, eBPF, cloud services, or network calls before
+  the offline profiler earns them.
+- Prefer deterministic parsers, compact reports, and mechanical validation over
+  broad exploratory log dumps.
+- Raw private incidents, session logs, token traces, and secret-shaped data stay
+  out of git.
+
+## Validate
+- `./scripts/validate.sh`
+
