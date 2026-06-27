@@ -261,6 +261,26 @@ def openclaw_inbound_fixture_rows() -> list[dict]:
     return rows
 
 
+def openclaw_inbound_mentions_heartbeat_fixture_rows() -> list[dict]:
+    rows = openclaw_inbound_fixture_rows()
+    rows[0]["payload"]["id"] = "inbound-mentions-heartbeat-session-1"
+    rows.insert(
+        2,
+        {
+            "timestamp": "2026-06-01T22:54:17.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "user_message",
+                "message": (
+                    "Memory says heartbeat_scan.py and spam_cleanup.py were "
+                    "part of an old incident, but this is a human chat turn."
+                ),
+            },
+        },
+    )
+    return rows
+
+
 def openclaw_legacy_discord_fixture_rows() -> list[dict]:
     rows = fixture_rows()
     rows[0]["payload"]["id"] = "legacy-discord-session-1"
@@ -574,6 +594,22 @@ class CliTests(unittest.TestCase):
             output = tool_out.getvalue()
             self.assertIn("message(action=send)", output)
             self.assertNotIn("no-tool-context:human.openclaw.tele" + "gram-direct", output)
+
+    def test_openclaw_inbound_heartbeat_mentions_do_not_create_background_label(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "toolburn.sqlite"
+            evidence = root / "rollout-2026-06-01T22-54-15-inbound-mention.jsonl"
+            write_jsonl(evidence, openclaw_inbound_mentions_heartbeat_fixture_rows())
+
+            main(["scan", "--db", str(db_path), "--openclaw", str(evidence)])
+
+            actor_out = io.StringIO()
+            with contextlib.redirect_stdout(actor_out):
+                self.assertEqual(main(["du", "--db", str(db_path), "--by", "actor"]), 0)
+            output = actor_out.getvalue()
+            self.assertIn("human.openclaw.tele" + "gram-direct", output)
+            self.assertNotIn("background.openclaw.heartbeat", output)
 
     def test_openclaw_legacy_discord_message_labels_human_channel(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

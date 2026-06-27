@@ -426,8 +426,6 @@ def infer_actor_id(
     openclaw_source = "openclaw" in source_label.lower() or "/.openclaw/" in str(path)
     if openclaw_source and ("GOS watchdog 30m" in haystack or "run_watchdog_cycle.py" in haystack):
         return "background.openclaw.gos-watchdog-30m", "background", 0.8
-    if openclaw_source and ("heartbeat_scan.py" in haystack or "spam_cleanup.py" in haystack):
-        return "background.openclaw.heartbeat", "background", 0.75
     if openclaw_source:
         cron_name = openclaw_cron_name(haystack)
         if cron_name:
@@ -445,6 +443,8 @@ def infer_actor_id(
         legacy_actor = openclaw_legacy_source_actor(haystack)
         if legacy_actor:
             return legacy_actor, "human", 0.62
+    if openclaw_source and openclaw_heartbeat_invoked(haystack):
+        return "background.openclaw.heartbeat", "background", 0.75
     if openclaw_source:
         return f"unknown.openclaw-session.{session_id}", "unknown", 0.45
     workspace = slug(str(meta.get("cwd") or path.parent.name))
@@ -483,6 +483,17 @@ def openclaw_legacy_source_actor(text: str) -> str:
     if ("Tele" + "gram direct conversation") in text:
         return "human.openclaw." + "tele" + "gram-direct"
     return ""
+
+
+def openclaw_heartbeat_invoked(text: str) -> bool:
+    patterns = (
+        r'"cmd"\s*:\s*"[^"]*(heartbeat_scan\.py|spam_cleanup\.py)',
+        r'"command"\s*:\s*"[^"]*(heartbeat_scan\.py|spam_cleanup\.py)',
+        r'heartbeat_scan\.py --json && \./tools/spam_cleanup\.py',
+        r'\./tools/heartbeat_scan\.py',
+        r'\./tools/spam_cleanup\.py',
+    )
+    return any(re.search(pattern, text) for pattern in patterns)
 
 
 def evidence_excerpt(text: str, limit: int = 2000) -> str:
