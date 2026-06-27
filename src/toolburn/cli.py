@@ -133,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         print("")
-        print("Top tools")
+        print("Top tool-contexts")
         print(
             format_table(
                 top_report(

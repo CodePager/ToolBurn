@@ -35,8 +35,14 @@ toolburn --help
 toolburn recent --hours 24
 ```
 
-That scans the default local session roots and prints the top actors and tools
-for the lookback window.
+That scans the default local session roots and prints the top actors and
+tool-contexts for the lookback window.
+
+Actor and session totals are token spend. Tool-context rows are attribution
+hints: they show token events near a command in the transcript, not proof that
+the command itself called a model. Tool-context reports include an `uncached`
+column and rank by uncached tokens so deterministic commands with large cached
+context do not look like the primary burn source.
 
 See supported evidence sources:
 
@@ -73,7 +79,7 @@ toolburn scan --db /tmp/toolburn.sqlite --copilot /root/.copilot/session-state
 toolburn scan --db /tmp/toolburn.sqlite --source codex=/path/to/rollout.jsonl
 ```
 
-### Rank Burn By Actor, Tool, Session, Or Source
+### Rank Burn By Actor, Tool-Context, Session, Or Source
 
 ```bash
 toolburn top --db /tmp/toolburn.sqlite --by actor --since 2026-06-02T10:00:00.000Z

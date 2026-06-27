@@ -199,6 +199,89 @@ def openclaw_dream_fixture_rows() -> list[dict]:
     return rows
 
 
+def cached_validate_attribution_rows() -> list[dict]:
+    return [
+        {
+            "timestamp": "2026-06-01T22:54:15.000Z",
+            "type": "session_meta",
+            "payload": {
+                "id": "cached-validate-session",
+                "timestamp": "2026-06-01T22:54:15.000Z",
+                "cwd": "/srv/pager/repos/toolburn",
+                "originator": "codex",
+            },
+        },
+        {
+            "timestamp": "2026-06-01T22:54:20.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call",
+                "call_id": "call-validate",
+                "name": "shell_command",
+                "arguments": json.dumps({"command": "./scripts/validate.sh"}),
+            },
+        },
+        {
+            "timestamp": "2026-06-01T22:54:21.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call-validate",
+                "output": "validation passed",
+            },
+        },
+        {
+            "timestamp": "2026-06-01T22:54:24.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {
+                        "input_tokens": 1000,
+                        "cached_input_tokens": 990,
+                        "output_tokens": 5,
+                        "total_tokens": 1005,
+                    },
+                },
+            },
+        },
+        {
+            "timestamp": "2026-06-01T22:55:20.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call",
+                "call_id": "call-heavy",
+                "name": "shell_command",
+                "arguments": json.dumps({"command": "python3 expensive_context.py"}),
+            },
+        },
+        {
+            "timestamp": "2026-06-01T22:55:21.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "function_call_output",
+                "call_id": "call-heavy",
+                "output": "large fresh result",
+            },
+        },
+        {
+            "timestamp": "2026-06-01T22:55:24.000Z",
+            "type": "event_msg",
+            "payload": {
+                "type": "token_count",
+                "info": {
+                    "last_token_usage": {
+                        "input_tokens": 200,
+                        "cached_input_tokens": 10,
+                        "output_tokens": 10,
+                        "total_tokens": 210,
+                    },
+                },
+            },
+        },
+    ]
+
+
 class CliTests(unittest.TestCase):
     def test_help_returns_zero(self) -> None:
         stdout = io.StringIO()
@@ -288,8 +371,28 @@ class CliTests(unittest.TestCase):
                 )
             output = stdout.getvalue()
             self.assertIn("Top actors", output)
-            self.assertIn("Top tools", output)
+            self.assertIn("Top tool-contexts", output)
+            self.assertIn("uncached", output)
             self.assertIn("run_watchdog_cycle.py", output)
+
+    def test_tool_report_orders_by_uncached_context_not_cached_raw_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            evidence = root / "rollout-2026-06-01T22-54-15-test.jsonl"
+            db_path = root / "toolburn.sqlite"
+            write_jsonl(evidence, cached_validate_attribution_rows())
+
+            main(["scan", "--db", str(db_path), "--codex", str(evidence)])
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(main(["top", "--db", str(db_path), "--by", "tool"]), 0)
+            output = stdout.getvalue()
+            self.assertIn("uncached", output)
+            self.assertLess(
+                output.index("python3 expensive_context.py"),
+                output.index("./scripts/validate.sh"),
+            )
 
     def test_scan_supports_github_copilot_events_jsonl(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

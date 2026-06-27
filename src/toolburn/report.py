@@ -16,6 +16,7 @@ def du_report(
     actor_type: str | None = None,
 ) -> list[dict]:
     column, joins = group_query_parts(group_by)
+    order_column = "uncached_tokens" if group_by == "tool" else "raw_tokens"
     filters = []
     params: list[object] = []
     if since:
@@ -32,12 +33,13 @@ def du_report(
                sum(raw_total_tokens) as raw_tokens,
                sum(input_tokens) as input_tokens,
                sum(cached_input_tokens) as cached_input_tokens,
-               sum(output_tokens) as output_tokens
+               sum(output_tokens) as output_tokens,
+               sum(max(input_tokens - cached_input_tokens, 0) + output_tokens) as uncached_tokens
         from token_events
         {joins}
         {where}
         group by {column}
-        order by raw_tokens desc
+        order by {order_column} desc
         limit ?
     """
     with connect(db_path) as conn:
@@ -115,9 +117,20 @@ def format_table(rows: list[dict]) -> str:
         return "no rows"
     lines = []
     for row in rows:
+        row = dict(row)
+        row.setdefault(
+            "uncached_tokens",
+            max(
+                int(row.get("input_tokens") or 0)
+                - int(row.get("cached_input_tokens") or 0),
+                0,
+            )
+            + int(row.get("output_tokens") or 0),
+        )
         lines.append(
             "{raw_tokens:>12} raw  {cached_input_tokens:>12} cached  "
-            "{output_tokens:>8} output  {events:>5} events  {label}".format(**row)
+            "{uncached_tokens:>10} uncached  {output_tokens:>8} output  "
+            "{events:>5} events  {label}".format(**row)
         )
     return "\n".join(lines)
 
