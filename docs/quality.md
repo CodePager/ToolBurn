@@ -14,6 +14,7 @@
 - Raw private evidence is excluded from git.
 - Reports are compact enough to hand to an agent without flooding context.
 - Tool reports must distinguish nearby transcript context from proven tool-caused model calls.
+- Token events without a nearby invocation must name the actor as `no-tool-context:<actor>`, not collapse into `unknown.tool`.
 
 ## Phase 1 Acceptance
 

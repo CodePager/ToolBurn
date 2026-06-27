@@ -155,7 +155,7 @@ def format_explain(report: dict, for_agent: bool = False) -> str:
         f"Cached ratio: {ratio:.2f}",
     ]
     if tools:
-        lines.extend(["", "Top tools:"])
+        lines.extend(["", "Top tool-contexts:"])
         for tool in tools:
             lines.append(
                 f"  {tool['output_bytes'] or 0} bytes output over "
@@ -185,7 +185,7 @@ def group_query_parts(group_by: str) -> tuple[str, str]:
         return "token_events.source_path", ""
     if group_by == "tool":
         return (
-            "coalesce(tools.normalized_command, 'unknown.tool')",
+            "coalesce(tools.normalized_command, 'no-tool-context:' || token_events.actor_id)",
             """
             left join invocations on invocations.invocation_id = token_events.invocation_id
             left join tools on tools.tool_id = invocations.tool_id

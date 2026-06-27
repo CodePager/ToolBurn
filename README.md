@@ -44,6 +44,11 @@ the command itself called a model. Tool-context reports include an `uncached`
 column and rank by uncached tokens so deterministic commands with large cached
 context do not look like the primary burn source.
 
+If a token event has no nearby tool invocation, Toolburn reports it as
+`no-tool-context:<actor>`. That usually means a model-only turn, final answer,
+or adapter/source gap, and should be diagnosed at the actor or session level
+instead of as a fake `unknown.tool`.
+
 See supported evidence sources:
 
 ```bash

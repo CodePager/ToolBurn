@@ -181,10 +181,8 @@ def openclaw_cron_fixture_rows() -> list[dict]:
 
 
 def openclaw_dream_fixture_rows() -> list[dict]:
-    rows = fixture_rows()
+    rows = [row for row in fixture_rows() if row.get("type") != "response_item"]
     rows[0]["payload"]["id"] = "dream-session-1"
-    rows[1]["payload"]["arguments"] = json.dumps({"command": "write"})
-    rows[2]["payload"]["output"] = "done"
     rows.insert(
         1,
         {
@@ -195,6 +193,29 @@ def openclaw_dream_fixture_rows() -> list[dict]:
                 "message": "Write a dream diary entry from these memory fragments.",
             },
         },
+    )
+    return rows
+
+
+def openclaw_direct_fixture_rows() -> list[dict]:
+    rows = fixture_rows()
+    rows[0]["payload"]["id"] = "direct-session-1"
+    rows[1]["payload"]["arguments"] = json.dumps({"command": "date -u"})
+    key = "".join(["session", "Key"])
+    value = ":".join(
+        [
+            "agent",
+            "main",
+            "tele" + "gram",
+            "direct",
+            "0000000000",
+        ]
+    )
+    rows[2]["payload"]["output"] = json.dumps(
+        {
+            key: value,
+            "ok": True,
+        }
     )
     return rows
 
@@ -309,7 +330,7 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(main(["du", "--db", str(db_path), "--by", "actor"]), 0)
             output = du_out.getvalue()
             self.assertIn("315 raw", output)
-            self.assertIn("background.openclaw.direct-session.0000000000", output)
+            self.assertIn("background.openclaw.gos-watchdog-30m", output)
 
             tool_out = io.StringIO()
             with contextlib.redirect_stdout(tool_out):
@@ -332,7 +353,7 @@ class CliTests(unittest.TestCase):
                             "explain",
                             "--db",
                             str(db_path),
-                            "background.openclaw.direct-session.0000000000",
+                            "background.openclaw.gos-watchdog-30m",
                             "--for-agent",
                         ]
                     ),
@@ -456,6 +477,27 @@ class CliTests(unittest.TestCase):
             self.assertIn("background.openclaw.cron.voice-models-daily-maintain", output)
             self.assertIn("background.openclaw.dream-diary", output)
 
+            tool_out = io.StringIO()
+            with contextlib.redirect_stdout(tool_out):
+                self.assertEqual(main(["top", "--db", str(db_path), "--by", "tool"]), 0)
+            self.assertIn("no-tool-context:background.openclaw.dream-diary", tool_out.getvalue())
+
+    def test_openclaw_direct_sessions_are_labeled_human(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "toolburn.sqlite"
+            direct_evidence = root / "rollout-2026-06-01T22-54-15-direct.jsonl"
+            write_jsonl(direct_evidence, openclaw_direct_fixture_rows())
+
+            main(["scan", "--db", str(db_path), "--openclaw", str(direct_evidence)])
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(main(["du", "--db", str(db_path), "--by", "actor"]), 0)
+            output = stdout.getvalue()
+            self.assertIn("human.openclaw.direct-session.0000000000", output)
+            self.assertNotIn("background.openclaw.direct-session", output)
+
     def test_reports_filter_by_actor_type(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -502,7 +544,7 @@ class CliTests(unittest.TestCase):
                     ),
                     0,
                 )
-            self.assertIn("background.openclaw.direct-session.0000000000", background_out.getvalue())
+            self.assertIn("background.openclaw.gos-watchdog-30m", background_out.getvalue())
             self.assertNotIn("human.codex.workspace.pager", background_out.getvalue())
 
 
