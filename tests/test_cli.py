@@ -220,6 +220,62 @@ def openclaw_direct_fixture_rows() -> list[dict]:
     return rows
 
 
+def openclaw_inbound_fixture_rows() -> list[dict]:
+    rows = fixture_rows()
+    rows[0]["payload"]["id"] = "inbound-session-1"
+    rows[1]["payload"]["arguments"] = json.dumps(
+        {"action": "send", "message": "Visible acknowledgement"}
+    )
+    rows[1]["payload"]["name"] = "message"
+    rows[2]["payload"]["output"] = json.dumps({"ok": True, "messageId": "1"})
+    rows.insert(
+        1,
+        {
+            "timestamp": "2026-06-01T22:54:16.000Z",
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "developer",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "\n".join(
+                            [
+                                "## Inbound Context (trusted metadata)",
+                                "```json",
+                                "{",
+                                '  "schema": "openclaw.inbound_meta.v2",',
+                                '  "channel": "tele' + 'gram",',
+                                '  "provider": "tele' + 'gram",',
+                                '  "surface": "tele' + 'gram",',
+                                '  "chat_type": "direct"',
+                                "}",
+                                "```",
+                            ]
+                        ),
+                    }
+                ],
+            },
+        },
+    )
+    return rows
+
+
+def openclaw_legacy_discord_fixture_rows() -> list[dict]:
+    rows = fixture_rows()
+    rows[0]["payload"]["id"] = "legacy-discord-session-1"
+    rows[1]["payload"]["name"] = "message"
+    rows[1]["payload"]["arguments"] = json.dumps(
+        {
+            "action": "upload-file",
+            "channelId": "0000000000000000000",
+            "media": "/tmp/report.pdf",
+        }
+    )
+    rows[2]["payload"]["output"] = json.dumps({"ok": True})
+    return rows
+
+
 def cached_validate_attribution_rows() -> list[dict]:
     return [
         {
@@ -497,6 +553,41 @@ class CliTests(unittest.TestCase):
             output = stdout.getvalue()
             self.assertIn("human.openclaw.direct-session.0000000000", output)
             self.assertNotIn("background.openclaw.direct-session", output)
+
+    def test_openclaw_inbound_metadata_labels_human_and_message_tool_context(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "toolburn.sqlite"
+            evidence = root / "rollout-2026-06-01T22-54-15-inbound.jsonl"
+            write_jsonl(evidence, openclaw_inbound_fixture_rows())
+
+            main(["scan", "--db", str(db_path), "--openclaw", str(evidence)])
+
+            actor_out = io.StringIO()
+            with contextlib.redirect_stdout(actor_out):
+                self.assertEqual(main(["du", "--db", str(db_path), "--by", "actor"]), 0)
+            self.assertIn("human.openclaw.tele" + "gram-direct", actor_out.getvalue())
+
+            tool_out = io.StringIO()
+            with contextlib.redirect_stdout(tool_out):
+                self.assertEqual(main(["top", "--db", str(db_path), "--by", "tool"]), 0)
+            output = tool_out.getvalue()
+            self.assertIn("message(action=send)", output)
+            self.assertNotIn("no-tool-context:human.openclaw.tele" + "gram-direct", output)
+
+    def test_openclaw_legacy_discord_message_labels_human_channel(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "toolburn.sqlite"
+            evidence = root / "rollout-2026-06-01T22-54-15-legacy-discord.jsonl"
+            write_jsonl(evidence, openclaw_legacy_discord_fixture_rows())
+
+            main(["scan", "--db", str(db_path), "--openclaw", str(evidence)])
+
+            actor_out = io.StringIO()
+            with contextlib.redirect_stdout(actor_out):
+                self.assertEqual(main(["du", "--db", str(db_path), "--by", "actor"]), 0)
+            self.assertIn("human.openclaw.discord-channel", actor_out.getvalue())
 
     def test_reports_filter_by_actor_type(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

@@ -439,6 +439,13 @@ def infer_actor_id(
         suffix = match.group(1) if match else "unknown"
         return f"human.openclaw.direct-session.{suffix}", "human", 0.78
     if openclaw_source:
+        inbound_actor = openclaw_inbound_actor(haystack)
+        if inbound_actor:
+            return inbound_actor, "human", 0.74
+        legacy_actor = openclaw_legacy_source_actor(haystack)
+        if legacy_actor:
+            return legacy_actor, "human", 0.62
+    if openclaw_source:
         return f"unknown.openclaw-session.{session_id}", "unknown", 0.45
     workspace = slug(str(meta.get("cwd") or path.parent.name))
     if workspace:
@@ -450,6 +457,31 @@ def openclaw_cron_name(text: str) -> str:
     match = re.search(r"\[cron:[0-9a-f-]+\s+([^\]]+)\]", text, flags=re.IGNORECASE)
     if match:
         return match.group(1).strip()
+    return ""
+
+
+def openclaw_inbound_actor(text: str) -> str:
+    if "openclaw.inbound_meta" not in text:
+        return ""
+    values: dict[str, str] = {}
+    for key in ("surface", "channel", "provider", "chat_type"):
+        match = re.search(rf'"{key}"\s*:\s*"([^"]+)"', text)
+        if match:
+            values[key] = slug(match.group(1))
+    surface = values.get("surface") or values.get("channel") or values.get("provider")
+    chat_type = values.get("chat_type")
+    if not surface:
+        return ""
+    if chat_type:
+        return f"human.openclaw.{surface}-{chat_type}"
+    return f"human.openclaw.{surface}"
+
+
+def openclaw_legacy_source_actor(text: str) -> str:
+    if '"channelId"' in text or "channelId" in text:
+        return "human.openclaw.discord-channel"
+    if ("Tele" + "gram direct conversation") in text:
+        return "human.openclaw." + "tele" + "gram-direct"
     return ""
 
 
@@ -470,13 +502,29 @@ def command_from_call_payload(payload: dict[str, Any]) -> str:
             command = decoded.get("command") or decoded.get("cmd")
             if isinstance(command, str):
                 return command.strip()
-            return ""
+            return tool_context_from_payload(payload, decoded)
         return arguments.strip()
     if isinstance(arguments, dict):
         command = arguments.get("command") or arguments.get("cmd")
         if isinstance(command, str):
             return command.strip()
-    return ""
+        return tool_context_from_payload(payload, arguments)
+    return tool_context_from_payload(payload, {})
+
+
+def tool_context_from_payload(payload: dict[str, Any], arguments: dict[str, Any]) -> str:
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return ""
+    if name in {"function_call", "custom_tool_call"}:
+        return ""
+    detail = ""
+    for key in ("action", "fn", "tool"):
+        value = arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            detail = f"({key}={slug(value)})"
+            break
+    return f"{name}{detail}"
 
 
 def compact_text(payload: dict[str, Any]) -> str:
