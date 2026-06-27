@@ -39,6 +39,7 @@ toolburn recent --help
 The normal local check is:
 
 ```bash
+toolburn 24h
 toolburn recent --hours 23 --limit 20
 ```
 

@@ -59,6 +59,17 @@ def build_parser() -> argparse.ArgumentParser:
     recent_parser.add_argument("--openclaw", type=Path, default=DEFAULT_OPENCLAW_ROOT)
     recent_parser.add_argument("--copilot", type=Path, default=DEFAULT_COPILOT_ROOT)
 
+    recent24_parser = subparsers.add_parser(
+        "24h", help="shortcut for recent token burn over the last 24 hours"
+    )
+    recent24_parser.add_argument("--limit", type=int, default=10)
+    recent24_parser.add_argument("--db", type=Path, help="SQLite DB path")
+    recent24_parser.add_argument("--no-scan", action="store_true", help="reuse the DB")
+    recent24_parser.add_argument("--actor-type", choices=ACTOR_TYPES, help="only show one actor type")
+    recent24_parser.add_argument("--codex", type=Path, default=DEFAULT_CODEX_ROOT)
+    recent24_parser.add_argument("--openclaw", type=Path, default=DEFAULT_OPENCLAW_ROOT)
+    recent24_parser.add_argument("--copilot", type=Path, default=DEFAULT_COPILOT_ROOT)
+
     subparsers.add_parser("sources", help="show supported and planned evidence sources")
 
     update_parser = subparsers.add_parser("update", help="update the local Toolburn checkout")
@@ -132,9 +143,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    if args.command == "recent":
+    if args.command in {"recent", "24h"}:
         db_path = args.db or default_recent_db_path()
-        since = hours_ago_iso(args.hours)
+        since = hours_ago_iso(args.hours if args.command == "recent" else 24)
         sources = existing_default_sources(args)
         if not args.no_scan:
             if not sources:

@@ -41,6 +41,12 @@ toolburn --help
 toolburn recent --hours 24
 ```
 
+Shortcut:
+
+```bash
+toolburn 24h
+```
+
 That scans the default local session roots and prints the top actors and
 tool-contexts for the lookback window.
 
@@ -66,6 +72,7 @@ toolburn sources
 ### Recent Burn
 
 ```bash
+toolburn 24h
 toolburn recent --hours 24 --limit 20
 toolburn recent --hours 6 --limit 15
 toolburn recent --hours 1 --limit 20

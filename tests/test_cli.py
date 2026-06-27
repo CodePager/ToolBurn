@@ -490,6 +490,36 @@ class CliTests(unittest.TestCase):
             self.assertIn("uncached", output)
             self.assertIn("run_watchdog_cycle.py", output)
 
+    def test_24h_shortcut_prints_recent_burn(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            sessions = root / "sessions"
+            evidence = sessions / "rollout-2026-06-01T22-54-15-test.jsonl"
+            db_path = root / "toolburn.sqlite"
+            write_jsonl(evidence, fixture_rows())
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(
+                    main(
+                        [
+                            "24h",
+                            "--db",
+                            str(db_path),
+                            "--codex",
+                            str(root / "missing-codex"),
+                            "--openclaw",
+                            str(sessions),
+                        ]
+                    ),
+                    0,
+                )
+            output = stdout.getvalue()
+            self.assertIn("scanned", output)
+            self.assertIn("since ", output)
+            self.assertIn("Top actors", output)
+            self.assertIn("Top tool-contexts", output)
+
     def test_tool_report_orders_by_uncached_context_not_cached_raw_tokens(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
