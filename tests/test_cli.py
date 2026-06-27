@@ -595,6 +595,32 @@ class CliTests(unittest.TestCase):
             self.assertIn("message(action=send)", output)
             self.assertNotIn("no-tool-context:human.openclaw.tele" + "gram-direct", output)
 
+    def test_openclaw_direct_alias_merges_with_concrete_session(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            db_path = root / "toolburn.sqlite"
+            direct_evidence = root / "rollout-2026-06-01T22-54-15-direct.jsonl"
+            inbound_evidence = root / "rollout-2026-06-01T22-55-15-inbound.jsonl"
+            write_jsonl(direct_evidence, openclaw_direct_fixture_rows())
+            write_jsonl(inbound_evidence, openclaw_inbound_fixture_rows())
+
+            main(["scan", "--db", str(db_path), "--openclaw", str(root)])
+
+            actor_out = io.StringIO()
+            with contextlib.redirect_stdout(actor_out):
+                self.assertEqual(main(["du", "--db", str(db_path), "--by", "actor"]), 0)
+            output = actor_out.getvalue()
+            self.assertIn("human.openclaw.direct-session.0000000000", output)
+            self.assertNotIn("human.openclaw.tele" + "gram-direct", output)
+
+            tool_out = io.StringIO()
+            with contextlib.redirect_stdout(tool_out):
+                self.assertEqual(main(["top", "--db", str(db_path), "--by", "tool"]), 0)
+            self.assertNotIn(
+                "no-tool-context:human.openclaw.tele" + "gram-direct",
+                tool_out.getvalue(),
+            )
+
     def test_openclaw_inbound_heartbeat_mentions_do_not_create_background_label(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

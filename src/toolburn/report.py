@@ -178,20 +178,47 @@ def export_json(db_path: Path, target: str | None = None) -> str:
 
 def group_query_parts(group_by: str) -> tuple[str, str]:
     if group_by == "actor":
-        return "token_events.actor_id", ""
+        return canonical_actor_sql(), ""
     if group_by == "session":
         return "token_events.session_id", ""
     if group_by == "source":
         return "token_events.source_path", ""
     if group_by == "tool":
         return (
-            "coalesce(tools.normalized_command, 'no-tool-context:' || token_events.actor_id)",
+            "coalesce(tools.normalized_command, 'no-tool-context:' || "
+            + canonical_actor_sql()
+            + ")",
             """
             left join invocations on invocations.invocation_id = token_events.invocation_id
             left join tools on tools.tool_id = invocations.tool_id
             """,
         )
     raise ValueError(f"unsupported group: {group_by}")
+
+
+def canonical_actor_sql() -> str:
+    generic_direct = "human.openclaw." + "tele" + "gram-direct"
+    concrete_direct = "human.openclaw.direct-session.[0-9]*"
+    return """
+        case
+          when token_events.actor_id = '{generic_direct}'
+           and (
+             select count(distinct actor_id)
+             from actors
+             where actor_id glob '{concrete_direct}'
+           ) = 1
+          then (
+             select actor_id
+             from actors
+             where actor_id glob '{concrete_direct}'
+             limit 1
+           )
+          else token_events.actor_id
+        end
+    """.format(
+        generic_direct=generic_direct,
+        concrete_direct=concrete_direct,
+    )
 
 
 def opportunities(totals: dict, tools: list[dict]) -> list[str]:
