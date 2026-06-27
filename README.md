@@ -21,6 +21,12 @@ curl -fsSL https://raw.githubusercontent.com/CodePager/ToolBurn/main/install.sh 
 toolburn --help
 ```
 
+After the command is installed, update it in place:
+
+```bash
+toolburn update
+```
+
 From a local checkout:
 
 ```bash

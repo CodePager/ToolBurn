@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tempfile import gettempdir
@@ -58,6 +60,32 @@ def build_parser() -> argparse.ArgumentParser:
     recent_parser.add_argument("--copilot", type=Path, default=DEFAULT_COPILOT_ROOT)
 
     subparsers.add_parser("sources", help="show supported and planned evidence sources")
+
+    update_parser = subparsers.add_parser("update", help="update the local Toolburn checkout")
+    update_parser.add_argument(
+        "--install-dir",
+        type=Path,
+        default=default_install_dir(),
+        help="Toolburn git checkout to update",
+    )
+    update_parser.add_argument("--remote", default="origin", help="git remote to fetch")
+    update_parser.add_argument("--ref", default="main", help="remote ref to fast-forward to")
+    update_parser.add_argument(
+        "--bin-dir",
+        type=Path,
+        default=default_bin_dir(),
+        help="directory where the toolburn wrapper should be installed",
+    )
+    update_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="discard local checkout changes and reset to the fetched ref",
+    )
+    update_parser.add_argument(
+        "--skip-install",
+        action="store_true",
+        help="update the checkout without rewriting the command wrapper",
+    )
 
     for command in ("du", "top"):
         report_parser = subparsers.add_parser(command, help=f"show token usage by {command}")
@@ -151,6 +179,22 @@ def main(argv: list[str] | None = None) -> int:
         print(format_sources())
         return 0
 
+    if args.command == "update":
+        try:
+            result = update_installation(
+                install_dir=args.install_dir,
+                remote=args.remote,
+                ref=args.ref,
+                bin_dir=args.bin_dir,
+                force=args.force,
+                install_wrapper=not args.skip_install,
+            )
+        except ToolburnUpdateError as exc:
+            print(f"toolburn update failed: {exc}")
+            return 2
+        print(format_update_result(result))
+        return 0
+
     if args.command == "du":
         print(
             format_table(
@@ -229,6 +273,118 @@ def hours_ago_iso(hours: float) -> str:
 
 def default_recent_db_path() -> Path:
     return Path(gettempdir()) / "toolburn-recent.sqlite"
+
+
+class ToolburnUpdateError(RuntimeError):
+    pass
+
+
+def default_install_dir() -> Path:
+    env = os.environ.get("TOOLBURN_INSTALL_DIR")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[2]
+
+
+def default_bin_dir() -> Path:
+    env = os.environ.get("TOOLBURN_BIN_DIR")
+    if env:
+        return Path(env)
+    if os.geteuid() == 0:
+        return Path("/usr/local/bin")
+    return Path.home() / ".local" / "bin"
+
+
+def update_installation(
+    install_dir: Path,
+    remote: str,
+    ref: str,
+    bin_dir: Path,
+    force: bool = False,
+    install_wrapper: bool = True,
+) -> dict[str, str]:
+    repo = install_dir.resolve()
+    if not (repo / ".git").exists():
+        raise ToolburnUpdateError(f"{repo} is not a git checkout")
+
+    before = git_output(repo, "rev-parse", "--short", "HEAD")
+    status = git_output(repo, "status", "--porcelain")
+    if status and not force:
+        raise ToolburnUpdateError(
+            f"{repo} has local changes; commit them or rerun with --force"
+        )
+
+    git_run(repo, "fetch", "--quiet", remote, ref)
+    if force:
+        git_run(repo, "reset", "--quiet", "--hard", "FETCH_HEAD")
+    else:
+        git_run(repo, "merge", "--ff-only", "FETCH_HEAD")
+    after = git_output(repo, "rev-parse", "--short", "HEAD")
+
+    wrapper = ""
+    if install_wrapper:
+        wrapper = install_command_wrapper(repo, bin_dir)
+
+    return {
+        "install_dir": str(repo),
+        "before": before,
+        "after": after,
+        "wrapper": wrapper,
+    }
+
+
+def git_run(repo: Path, *args: str) -> None:
+    try:
+        subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    except FileNotFoundError as exc:
+        raise ToolburnUpdateError("git is not on PATH") from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        raise ToolburnUpdateError(detail or "git command failed") from exc
+
+
+def git_output(repo: Path, *args: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    except FileNotFoundError as exc:
+        raise ToolburnUpdateError("git is not on PATH") from exc
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        raise ToolburnUpdateError(detail or "git command failed") from exc
+    return result.stdout.strip()
+
+
+def install_command_wrapper(repo: Path, bin_dir: Path) -> str:
+    target = bin_dir / "toolburn"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        f'exec "{repo / "toolburn"}" "$@"\n',
+        encoding="utf-8",
+    )
+    target.chmod(0o755)
+    return str(target)
+
+
+def format_update_result(result: dict[str, str]) -> str:
+    lines = [
+        f"updated {result['install_dir']}",
+        f"commit {result['before']} -> {result['after']}",
+    ]
+    if result.get("wrapper"):
+        lines.append(f"installed {result['wrapper']}")
+    return "\n".join(lines)
 
 
 def format_sources() -> str:

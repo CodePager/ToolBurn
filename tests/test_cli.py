@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import json
 import io
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,23 @@ from toolburn.cli import main
 def write_jsonl(path: Path, rows: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+
+def git(*args: str, cwd: Path) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return result.stdout.strip()
+
+
+def commit_all(repo: Path, message: str) -> str:
+    git("add", ".", cwd=repo)
+    git("-c", "user.name=Toolburn Test", "-c", "user.email=test@example.invalid", "commit", "-m", message, cwd=repo)
+    return git("rev-parse", "--short", "HEAD", cwd=repo)
 
 
 def fixture_rows() -> list[dict]:
@@ -520,6 +538,69 @@ class CliTests(unittest.TestCase):
         self.assertIn("experimental", output)
         self.assertIn("claude-code", output)
         self.assertIn("untested", output)
+
+    def test_update_fast_forwards_checkout_and_installs_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            remote = root / "remote.git"
+            seed = root / "seed"
+            install = root / "install"
+            bin_dir = root / "bin"
+
+            git("init", "--bare", str(remote), cwd=root)
+            git("init", "-b", "main", cwd=seed.mkdir() or seed)
+            (seed / "toolburn").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            first = commit_all(seed, "first")
+            git("remote", "add", "origin", str(remote), cwd=seed)
+            git("push", "-u", "origin", "main", cwd=seed)
+            git("clone", "--branch", "main", str(remote), str(install), cwd=root)
+
+            (seed / "toolburn").write_text("#!/usr/bin/env bash\n# updated\n", encoding="utf-8")
+            second = commit_all(seed, "second")
+            git("push", cwd=seed)
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(
+                    main(
+                        [
+                            "update",
+                            "--install-dir",
+                            str(install),
+                            "--bin-dir",
+                            str(bin_dir),
+                        ]
+                    ),
+                    0,
+                )
+            output = stdout.getvalue()
+            self.assertIn(f"commit {first} -> {second}", output)
+            self.assertTrue((bin_dir / "toolburn").exists())
+            self.assertEqual(second, git("rev-parse", "--short", "HEAD", cwd=install))
+
+    def test_update_refuses_dirty_checkout_without_force(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            remote = root / "remote.git"
+            seed = root / "seed"
+            install = root / "install"
+
+            git("init", "--bare", str(remote), cwd=root)
+            git("init", "-b", "main", cwd=seed.mkdir() or seed)
+            (seed / "toolburn").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            commit_all(seed, "first")
+            git("remote", "add", "origin", str(remote), cwd=seed)
+            git("push", "-u", "origin", "main", cwd=seed)
+            git("clone", "--branch", "main", str(remote), str(install), cwd=root)
+            (install / "local.txt").write_text("dirty\n", encoding="utf-8")
+
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                self.assertEqual(
+                    main(["update", "--install-dir", str(install), "--skip-install"]),
+                    2,
+                )
+            self.assertIn("has local changes", stdout.getvalue())
 
     def test_codex_workspace_sessions_are_labeled_human(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

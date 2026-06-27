@@ -19,6 +19,12 @@ Install or update from GitHub:
 curl -fsSL https://raw.githubusercontent.com/CodePager/ToolBurn/main/install.sh | sh
 ```
 
+Update an existing install:
+
+```bash
+toolburn update
+```
+
 Install from a checkout:
 
 ```bash
@@ -33,7 +39,7 @@ toolburn recent --help
 The normal local check is:
 
 ```bash
-toolburn recent --hours 24 --limit 20
+toolburn recent --hours 23 --limit 20
 ```
 
 This scans the default local Codex and OpenClaw session roots, writes a reusable
